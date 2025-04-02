@@ -153,7 +153,8 @@ export default async function decorate(block) {
           <div class="checkout__block checkout__delivery hide-on-checkout"></div>
           <div class="checkout__block checkout__payment-methods hide-on-checkout"></div>
           <div class="checkout__block checkout__billing-form hide-on-checkout"></div>             
-          <div class="checkout__block checkout__place-order"></div>
+          <div class="checkout__block checkout__place-order hide-on-checkout"></div>
+          <div class="checkout__block" id="payment-dropin"></div>
         </div>
         <div class="checkout__aside">
           <div class="checkout__block checkout__order-summary"></div>
@@ -474,7 +475,6 @@ export default async function decorate(block) {
             // Place order
             await orderApi.placeOrder(cartId);
           }
-
         } catch (error) {
           console.error(error);
           throw error;

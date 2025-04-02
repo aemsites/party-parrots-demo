@@ -218,6 +218,16 @@ async function loadEager(doc) {
     pageType = 'Cart';
   } else if (document.body.querySelector('main .commerce-checkout')) {
     pageType = 'Checkout';
+
+    loadScript('https://checkoutshopper-live.adyen.com/checkoutshopper/sdk/6.5.0/adyen.js', {
+      integrity: 'sha384-XS7xTa1zeFadKWQceyCI+If+qgqSpiE2z7fnFJyznti1yloAmaxHFUkf3K8/Av0+',
+      crossorigin: 'anonymous',
+    });
+
+    loadCSS('https://checkoutshopper-live.adyen.com/checkoutshopper/sdk/6.5.0/adyen.css', {
+      integrity: 'sha384-uufhzWG2RuRQO7+XOvcalWqc1tuu9jdTMeO5nMwXTHB1p/EJuxTwRfhA3Q8aLEGe',
+      crossorigin: 'anonymous',
+    });
   }
 
   window.adobeDataLayer.push(
