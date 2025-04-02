@@ -80,6 +80,9 @@ import {
 } from '../../scripts/checkout.js';
 import { authPrivacyPolicyConsentSlot } from '../../scripts/constants.js';
 
+// Adyen
+import { createSession, mountPaymentDropin } from '../../scripts/oope-adyen.js';
+
 function createMetaTag(property, content, type) {
   if (!property || !type) {
     return;
@@ -144,12 +147,12 @@ export default async function decorate(block) {
           <div class="checkout__block checkout__empty-cart"></div>
           <div class="checkout__block checkout__server-error"></div>
           <div class="checkout__block checkout__out-of-stock"></div>
-          <div class="checkout__block checkout__login"></div>
-          <div class="checkout__block checkout__shipping-form"></div>
-          <div class="checkout__block checkout__bill-to-shipping"></div>
-          <div class="checkout__block checkout__delivery"></div>
-          <div class="checkout__block checkout__payment-methods"></div>
-          <div class="checkout__block checkout__billing-form"></div>
+          <div class="checkout__block checkout__login hide-on-checkout"></div>
+          <div class="checkout__block checkout__shipping-form hide-on-checkout"></div>
+          <div class="checkout__block checkout__bill-to-shipping hide-on-checkout"></div>
+          <div class="checkout__block checkout__delivery hide-on-checkout"></div>
+          <div class="checkout__block checkout__payment-methods hide-on-checkout"></div>
+          <div class="checkout__block checkout__billing-form hide-on-checkout"></div>             
           <div class="checkout__block checkout__place-order"></div>
         </div>
         <div class="checkout__aside">
@@ -310,6 +313,16 @@ export default async function decorate(block) {
 
     CheckoutProvider.render(PaymentMethods, {
       slots: {
+        Handlers: {
+          checkmo: (_ctx) => {
+            const button = document.querySelector('[data-testid="place-order-button"]');
+            button.textContent = 'Place Order';
+          },
+          'oope-adyen': async () => {
+            const button = document.querySelector('[data-testid="place-order-button"]');
+            button.textContent = 'Pay Now';
+          },
+        },
         Methods: {
           [PaymentMethodCode.CREDIT_CARD]: {
             render: (ctx) => {
@@ -453,8 +466,15 @@ export default async function decorate(block) {
             // Submit Payment Services credit card form
             await creditCardFormRef.current.submit();
           }
-          // Place order
-          await orderApi.placeOrder(cartId);
+
+          if (code === 'oope-adyen') {
+            await startPayment(cartId);
+            hideOnCheckout();
+          } else {
+            // Place order
+            await orderApi.placeOrder(cartId);
+          }
+
         } catch (error) {
           console.error(error);
           throw error;
@@ -511,6 +531,13 @@ export default async function decorate(block) {
     loader.remove();
     loader = null;
     $loader.innerHTML = '';
+  };
+
+  const hideOnCheckout = () => {
+    const elements = document.querySelectorAll('.hide-on-checkout');
+    elements.forEach((element) => {
+      element.classList.add('hidden');
+    });
   };
 
   const initializeCheckout = async (data) => {
@@ -906,3 +933,69 @@ export default async function decorate(block) {
   events.on('checkout/updated', handleCheckoutUpdated);
   events.on('order/placed', handleOrderPlaced);
 }
+
+// TODO: Adyen implementations can be moved to a separate file once necessary fields are
+// propagated from dropins. Currently, keep it here for ease calling cart api.
+async function startPayment(cartId) {
+  // TODO: context (cartId, amount, sessionUrl, clientKey should come from checkout dropin)
+  const cartData = await cartApi.getCartData();
+  const createSessionEndpoint = 'https://development-266782-oopeadyenref.adobeioruntime.net/api/v1/web/adyen/create-session';
+  const createSessionRequest = {
+    amount: {
+      value: cartData.total.includingTax.value * 100, // adyen requires the amount in cents
+      currency: cartData.total.includingTax.currency,
+    },
+    reference: cartData.id,
+    returnUrl: `${window.location.origin}/checkout`,
+    countryCode: 'NL',
+  };
+
+  const sessionData = await createSession(
+    createSessionEndpoint,
+    createSessionRequest,
+  );
+
+  const configuration = {
+    session: {
+      id: sessionData.message.id,
+      sessionData: sessionData.message.sessionData,
+    },
+    environment: 'TEST',
+    amount: {
+      value: sessionData.message.amount.value,
+      currency: sessionData.message.amount.currency,
+    },
+    locale: sessionData.message.shopperLocale,
+    countryCode: sessionData.message.countryCode,
+    clientKey: 'test_5GVMOA5CUZDFFJ7STY3WHIWEOA4QN6CI', // TODO: can be coming from Commerce
+    analytics: {
+      enabled: true,
+    },
+    onPaymentCompleted: (result, component) => {
+      paymentCompleted(result, component, cartId);
+    },
+    onPaymentFailed: (result, component) => {
+      paymentFailedOrError(result, component);
+    },
+    onError: (error, component) => {
+      paymentFailedOrError(error, component);
+    },
+  };
+
+  await mountPaymentDropin(configuration, '#payment-dropin');
+}
+
+async function paymentCompleted(result, component, cartId) {
+  await orderApi.placeOrder(cartId)
+    .catch((e) => {
+      console.error('Failed to place order:', e);
+      throw e;
+    });
+}
+
+function paymentFailedOrError(result, component) {
+  alert('Payment failed. Please try again.');
+  console.error('Payment failed:', result);
+  component.unmount();
+}
+
